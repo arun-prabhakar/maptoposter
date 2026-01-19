@@ -11,8 +11,17 @@ from typing import Optional, List, Dict
 from datetime import datetime
 import asyncio
 
-# Add parent directory to path to import create_map_poster
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+# Determine base directory (handles both local dev and Docker)
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+if not os.path.exists(os.path.join(BASE_DIR, "themes")):
+    # We're in backend/ subdirectory in local dev
+    BASE_DIR = os.path.dirname(BASE_DIR)
+
+# Change working directory to base directory so create_map_poster can find themes/fonts
+os.chdir(BASE_DIR)
+
+# Add base directory to path to import create_map_poster
+sys.path.insert(0, BASE_DIR)
 import create_map_poster as cmp
 
 app = FastAPI(title="Map Poster Generator API", version="1.0.0")
@@ -27,7 +36,7 @@ app.add_middleware(
 )
 
 # Mount posters directory for serving generated images
-POSTERS_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "posters")
+POSTERS_DIR = os.path.join(BASE_DIR, "posters")
 os.makedirs(POSTERS_DIR, exist_ok=True)
 app.mount("/posters", StaticFiles(directory=POSTERS_DIR), name="posters")
 
@@ -61,10 +70,10 @@ async def root():
 async def get_themes():
     """Get all available themes."""
     themes = []
-    themes_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "themes")
+    themes_dir = os.path.join(BASE_DIR, "themes")
 
     if not os.path.exists(themes_dir):
-        raise HTTPException(status_code=500, detail="Themes directory not found")
+        raise HTTPException(status_code=500, detail=f"Themes directory not found at {themes_dir}")
 
     for file in sorted(os.listdir(themes_dir)):
         if file.endswith('.json'):
