@@ -17,9 +17,21 @@ function App() {
   const [generatedImage, setGeneratedImage] = useState(null)
   const [selectedThemeInfo, setSelectedThemeInfo] = useState(null)
 
-  // Fetch available themes on mount
+  // Advanced options
+  const [showAdvanced, setShowAdvanced] = useState(false)
+  const [width, setWidth] = useState(12)
+  const [height, setHeight] = useState(16)
+  const [dpi, setDpi] = useState(300)
+  const [showWater, setShowWater] = useState(true)
+  const [showParks, setShowParks] = useState(true)
+  const [showBuildings, setShowBuildings] = useState(false)
+  const [showRailways, setShowRailways] = useState(false)
+  const [presets, setPresets] = useState(null)
+
+  // Fetch available themes and presets on mount
   useEffect(() => {
     fetchThemes()
+    fetchPresets()
   }, [])
 
   // Poll job status when we have a job ID
@@ -63,6 +75,17 @@ function App() {
     }
   }
 
+  const fetchPresets = async () => {
+    try {
+      const response = await axios.get('/api/presets', {
+        timeout: 10000
+      })
+      setPresets(response.data)
+    } catch (error) {
+      console.error('Error fetching presets:', error)
+    }
+  }
+
   const generatePoster = async (e) => {
     e.preventDefault()
     setLoading(true)
@@ -74,7 +97,14 @@ function App() {
         city,
         country,
         theme,
-        distance: parseInt(distance)
+        distance: parseInt(distance),
+        width: parseInt(width),
+        height: parseInt(height),
+        dpi: parseInt(dpi),
+        show_water: showWater,
+        show_parks: showParks,
+        show_buildings: showBuildings,
+        show_railways: showRailways
       }, {
         timeout: 30000 // 30 second timeout for initial request
       })
@@ -194,6 +224,148 @@ function App() {
                 <small>Small (4-6km) • Medium (8-12km) • Large (15-30km)</small>
               </div>
             </div>
+
+            {/* Advanced Options Toggle */}
+            <div className="advanced-toggle">
+              <button
+                type="button"
+                className="toggle-btn"
+                onClick={() => setShowAdvanced(!showAdvanced)}
+              >
+                {showAdvanced ? '▼' : '▶'} Advanced Options
+              </button>
+            </div>
+
+            {/* Advanced Options Panel */}
+            {showAdvanced && (
+              <div className="advanced-options">
+                {/* Output Size */}
+                <div className="advanced-section">
+                  <h4>📐 Output Size</h4>
+                  {presets && (
+                    <div className="preset-buttons">
+                      {presets.output_sizes.map((preset, idx) => (
+                        <button
+                          key={idx}
+                          type="button"
+                          className={`preset-btn ${width === preset.width && height === preset.height ? 'active' : ''}`}
+                          onClick={() => {
+                            setWidth(preset.width)
+                            setHeight(preset.height)
+                          }}
+                        >
+                          {preset.name}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  <div className="size-inputs">
+                    <div className="input-inline">
+                      <label>Width (in)</label>
+                      <input
+                        type="number"
+                        min="6"
+                        max="48"
+                        value={width}
+                        onChange={(e) => setWidth(e.target.value)}
+                      />
+                    </div>
+                    <div className="input-inline">
+                      <label>Height (in)</label>
+                      <input
+                        type="number"
+                        min="6"
+                        max="48"
+                        value={height}
+                        onChange={(e) => setHeight(e.target.value)}
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* DPI Selection */}
+                <div className="advanced-section">
+                  <h4>🎯 Quality (DPI)</h4>
+                  {presets && (
+                    <div className="dpi-options">
+                      {presets.dpi_options.map((option, idx) => (
+                        <label key={idx} className="radio-option">
+                          <input
+                            type="radio"
+                            name="dpi"
+                            value={option.value}
+                            checked={dpi === option.value}
+                            onChange={() => setDpi(option.value)}
+                          />
+                          <span className="radio-label">
+                            <strong>{option.name}</strong>
+                            <small>{option.description}</small>
+                          </span>
+                        </label>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Map Features */}
+                <div className="advanced-section">
+                  <h4>🗺️ Map Features</h4>
+                  {presets && (
+                    <div className="preset-buttons">
+                      {presets.feature_sets.map((preset, idx) => (
+                        <button
+                          key={idx}
+                          type="button"
+                          className="preset-btn"
+                          onClick={() => {
+                            setShowWater(preset.water)
+                            setShowParks(preset.parks)
+                            setShowBuildings(preset.buildings)
+                            setShowRailways(preset.railways)
+                          }}
+                        >
+                          {preset.name}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  <div className="feature-toggles">
+                    <label className="checkbox-label">
+                      <input
+                        type="checkbox"
+                        checked={showWater}
+                        onChange={(e) => setShowWater(e.target.checked)}
+                      />
+                      <span>Water Bodies</span>
+                    </label>
+                    <label className="checkbox-label">
+                      <input
+                        type="checkbox"
+                        checked={showParks}
+                        onChange={(e) => setShowParks(e.target.checked)}
+                      />
+                      <span>Parks & Green Spaces</span>
+                    </label>
+                    <label className="checkbox-label">
+                      <input
+                        type="checkbox"
+                        checked={showBuildings}
+                        onChange={(e) => setShowBuildings(e.target.checked)}
+                      />
+                      <span>Buildings (slower)</span>
+                    </label>
+                    <label className="checkbox-label">
+                      <input
+                        type="checkbox"
+                        checked={showRailways}
+                        onChange={(e) => setShowRailways(e.target.checked)}
+                      />
+                      <span>Railways</span>
+                    </label>
+                  </div>
+                </div>
+              </div>
+            )}
 
             {selectedThemeInfo && (
               <div className="theme-preview">

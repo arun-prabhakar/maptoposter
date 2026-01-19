@@ -69,6 +69,20 @@ class PosterRequest(BaseModel):
     theme: str = "feature_based"
     distance: int = 29000
 
+    # Output configuration
+    width: int = 12
+    height: int = 16
+    dpi: int = 300
+
+    # Feature toggles
+    show_water: bool = True
+    show_parks: bool = True
+    show_buildings: bool = False
+    show_railways: bool = False
+
+    # Custom colors (optional overrides)
+    custom_colors: Optional[Dict[str, str]] = None
+
 class JobStatus(BaseModel):
     job_id: str
     status: str  # queued, processing, completed, failed
@@ -121,6 +135,30 @@ async def get_themes():
 
     return themes
 
+@app.get("/api/presets")
+async def get_presets():
+    """Get preset configurations for common use cases."""
+    return {
+        "output_sizes": [
+            {"name": "Standard Poster (12x16)", "width": 12, "height": 16},
+            {"name": "Square (12x12)", "width": 12, "height": 12},
+            {"name": "Landscape (16x12)", "width": 16, "height": 12},
+            {"name": "Large Portrait (18x24)", "width": 18, "height": 24},
+            {"name": "Extra Large (24x32)", "width": 24, "height": 32},
+        ],
+        "dpi_options": [
+            {"name": "Preview (150 DPI)", "value": 150, "description": "Fast, good for previews"},
+            {"name": "Standard (300 DPI)", "value": 300, "description": "High quality, recommended"},
+            {"name": "Print (600 DPI)", "value": 600, "description": "Maximum quality, slower"},
+        ],
+        "feature_sets": [
+            {"name": "Minimal", "water": True, "parks": False, "buildings": False, "railways": False},
+            {"name": "Standard", "water": True, "parks": True, "buildings": False, "railways": False},
+            {"name": "Detailed", "water": True, "parks": True, "buildings": True, "railways": False},
+            {"name": "Complete", "water": True, "parks": True, "buildings": True, "railways": True},
+        ]
+    }
+
 @app.post("/api/generate", response_model=JobStatus)
 async def generate_poster(request: PosterRequest, background_tasks: BackgroundTasks):
     """Generate a map poster. Returns a job ID to track progress."""
@@ -132,6 +170,17 @@ async def generate_poster(request: PosterRequest, background_tasks: BackgroundTa
     # Validate distance
     if request.distance < 1000 or request.distance > 50000:
         raise HTTPException(status_code=400, detail="Distance must be between 1000 and 50000 meters")
+
+    # Validate dimensions
+    if request.width < 6 or request.width > 48:
+        raise HTTPException(status_code=400, detail="Width must be between 6 and 48 inches")
+
+    if request.height < 6 or request.height > 48:
+        raise HTTPException(status_code=400, detail="Height must be between 6 and 48 inches")
+
+    # Validate DPI
+    if request.dpi not in [150, 300, 600]:
+        raise HTTPException(status_code=400, detail="DPI must be 150, 300, or 600")
 
     # Create job
     job_id = str(uuid.uuid4())
@@ -154,6 +203,11 @@ async def generate_poster(request: PosterRequest, background_tasks: BackgroundTa
 
 def _generate_poster_sync(job_id: str, request: PosterRequest):
     """Synchronous poster generation function to run in thread pool."""
+    import matplotlib.pyplot as plt
+    from matplotlib.font_manager import FontProperties
+    import osmnx as ox
+    import time
+
     try:
         jobs[job_id]["status"] = "processing"
         jobs[job_id]["message"] = "Looking up coordinates..."
@@ -162,22 +216,128 @@ def _generate_poster_sync(job_id: str, request: PosterRequest):
         # Load theme
         cmp.THEME = cmp.load_theme(request.theme)
 
+        # Apply custom color overrides
+        if request.custom_colors:
+            cmp.THEME.update(request.custom_colors)
+
         # Get coordinates
         coords = cmp.get_coordinates(request.city, request.country)
-        jobs[job_id]["progress"] = 30
+        jobs[job_id]["progress"] = 20
         jobs[job_id]["message"] = "Downloading map data..."
 
-        # Generate output filename in temp directory
+        # Fetch street network
+        G = ox.graph_from_point(coords, dist=request.distance, dist_type='bbox', network_type='all')
+        jobs[job_id]["progress"] = 35
+
+        # Fetch optional features based on toggles
+        water = None
+        parks = None
+        buildings = None
+        railways = None
+
+        if request.show_water:
+            try:
+                water = ox.features_from_point(coords, tags={'natural': 'water', 'waterway': 'riverbank'}, dist=request.distance)
+                jobs[job_id]["progress"] = 45
+            except:
+                pass
+            time.sleep(0.3)
+
+        if request.show_parks:
+            try:
+                parks = ox.features_from_point(coords, tags={'leisure': 'park', 'landuse': 'grass'}, dist=request.distance)
+                jobs[job_id]["progress"] = 50
+            except:
+                pass
+            time.sleep(0.3)
+
+        if request.show_buildings:
+            try:
+                jobs[job_id]["message"] = "Downloading buildings..."
+                buildings = ox.features_from_point(coords, tags={'building': True}, dist=request.distance)
+                jobs[job_id]["progress"] = 55
+            except:
+                pass
+            time.sleep(0.3)
+
+        if request.show_railways:
+            try:
+                jobs[job_id]["message"] = "Downloading railways..."
+                railways = ox.features_from_point(coords, tags={'railway': 'rail'}, dist=request.distance)
+                jobs[job_id]["progress"] = 60
+            except:
+                pass
+
+        jobs[job_id]["progress"] = 65
+        jobs[job_id]["message"] = "Rendering map..."
+
+        # Setup plot with custom dimensions
+        fig, ax = plt.subplots(figsize=(request.width, request.height), facecolor=cmp.THEME['bg'])
+        ax.set_facecolor(cmp.THEME['bg'])
+        ax.set_position([0, 0, 1, 1])
+
+        # Plot layers
+        if water is not None and not water.empty:
+            water.plot(ax=ax, facecolor=cmp.THEME['water'], edgecolor='none', zorder=1)
+
+        if parks is not None and not parks.empty:
+            parks.plot(ax=ax, facecolor=cmp.THEME['parks'], edgecolor='none', zorder=2)
+
+        if buildings is not None and not buildings.empty:
+            building_color = cmp.THEME.get('building', '#D0D0D0')
+            buildings.plot(ax=ax, facecolor=building_color, edgecolor='none', alpha=0.5, zorder=2.5)
+
+        if railways is not None and not railways.empty:
+            railway_color = cmp.THEME.get('railway', '#888888')
+            railways.plot(ax=ax, color=railway_color, linewidth=0.5, zorder=2.7)
+
+        # Roads
+        edge_colors = cmp.get_edge_colors_by_type(G)
+        edge_widths = cmp.get_edge_widths_by_type(G)
+        ox.plot_graph(G, ax=ax, bgcolor=cmp.THEME['bg'], node_size=0, edge_color=edge_colors, edge_linewidth=edge_widths, show=False, close=False)
+
+        jobs[job_id]["progress"] = 80
+
+        # Gradients
+        cmp.create_gradient_fade(ax, cmp.THEME['gradient_color'], location='bottom', zorder=10)
+        cmp.create_gradient_fade(ax, cmp.THEME['gradient_color'], location='top', zorder=10)
+
+        # Typography
+        if cmp.FONTS:
+            font_main = FontProperties(fname=cmp.FONTS['bold'], size=60)
+            font_sub = FontProperties(fname=cmp.FONTS['light'], size=22)
+            font_coords = FontProperties(fname=cmp.FONTS['regular'], size=14)
+            font_attr = FontProperties(fname=cmp.FONTS['light'], size=8)
+        else:
+            font_main = FontProperties(family='monospace', weight='bold', size=60)
+            font_sub = FontProperties(family='monospace', weight='normal', size=22)
+            font_coords = FontProperties(family='monospace', size=14)
+            font_attr = FontProperties(family='monospace', size=8)
+
+        spaced_city = "  ".join(list(request.city.upper()))
+        ax.text(0.5, 0.14, spaced_city, transform=ax.transAxes, color=cmp.THEME['text'], ha='center', fontproperties=font_main, zorder=11)
+        ax.text(0.5, 0.10, request.country.upper(), transform=ax.transAxes, color=cmp.THEME['text'], ha='center', fontproperties=font_sub, zorder=11)
+
+        lat, lon = coords
+        coords_text = f"{lat:.4f}° N / {lon:.4f}° E" if lat >= 0 else f"{abs(lat):.4f}° S / {lon:.4f}° E"
+        if lon < 0:
+            coords_text = coords_text.replace("E", "W")
+        ax.text(0.5, 0.07, coords_text, transform=ax.transAxes, color=cmp.THEME['text'], alpha=0.7, ha='center', fontproperties=font_coords, zorder=11)
+        ax.plot([0.4, 0.6], [0.125, 0.125], transform=ax.transAxes, color=cmp.THEME['text'], linewidth=1, zorder=11)
+        ax.text(0.98, 0.02, "© OpenStreetMap contributors", transform=ax.transAxes, color=cmp.THEME['text'], alpha=0.5, ha='right', va='bottom', fontproperties=font_attr, zorder=11)
+
+        jobs[job_id]["progress"] = 90
+        jobs[job_id]["message"] = "Saving poster..."
+
+        # Generate output filename
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         city_slug = request.city.lower().replace(' ', '_')
         filename = f"{city_slug}_{request.theme}_{timestamp}.png"
         output_file = os.path.join(TEMP_POSTERS_DIR, filename)
 
-        jobs[job_id]["progress"] = 50
-        jobs[job_id]["message"] = "Rendering map..."
-
-        # Create poster
-        cmp.create_poster(request.city, request.country, coords, request.distance, output_file)
+        # Save with custom DPI
+        plt.savefig(output_file, dpi=request.dpi, facecolor=cmp.THEME['bg'])
+        plt.close()
 
         jobs[job_id]["status"] = "completed"
         jobs[job_id]["progress"] = 100
