@@ -96,7 +96,10 @@ function App() {
       setJobStatus(response.data)
 
       if (response.data.status === 'completed') {
-        setGeneratedImage(response.data.file_url)
+        // file_url is /api/download/{job_id}
+        // For preview, use ?download=false, for download use ?download=true
+        const downloadUrl = response.data.file_url
+        setGeneratedImage(downloadUrl + '?download=false')
         setLoading(false)
       } else if (response.data.status === 'failed') {
         alert('Poster generation failed: ' + response.data.message)
@@ -111,8 +114,10 @@ function App() {
 
   const downloadImage = () => {
     if (generatedImage) {
+      // Replace ?download=false with ?download=true for actual download
+      const downloadUrl = generatedImage.replace('?download=false', '?download=true')
       const link = document.createElement('a')
-      link.href = generatedImage
+      link.href = downloadUrl
       link.download = `${city.toLowerCase()}_${theme}_poster.png`
       document.body.appendChild(link)
       link.click()

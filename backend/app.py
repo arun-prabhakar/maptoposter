@@ -1,15 +1,18 @@
 from fastapi import FastAPI, HTTPException, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 import os
 import sys
 import json
 import uuid
+import tempfile
+import shutil
 from typing import Optional, List, Dict
-from datetime import datetime
+from datetime import datetime, timedelta
 import asyncio
+from pathlib import Path
 
 # Determine base directory (handles both local dev and Docker)
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -35,13 +38,30 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Mount posters directory for serving generated images
-POSTERS_DIR = os.path.join(BASE_DIR, "posters")
-os.makedirs(POSTERS_DIR, exist_ok=True)
-app.mount("/posters", StaticFiles(directory=POSTERS_DIR), name="posters")
+# Use temporary directory for posters with auto-cleanup
+TEMP_POSTERS_DIR = tempfile.mkdtemp(prefix="maptoposter_")
+print(f"📁 Temporary posters directory: {TEMP_POSTERS_DIR}")
 
 # In-memory job storage (in production, use Redis or a database)
 jobs = {}
+
+# File cleanup configuration
+FILE_EXPIRY_HOURS = 2  # Delete files older than 2 hours
+
+def cleanup_old_files():
+    """Remove poster files older than FILE_EXPIRY_HOURS."""
+    try:
+        now = datetime.now()
+        count = 0
+        for file_path in Path(TEMP_POSTERS_DIR).glob("*.png"):
+            file_age = now - datetime.fromtimestamp(file_path.stat().st_mtime)
+            if file_age > timedelta(hours=FILE_EXPIRY_HOURS):
+                file_path.unlink()
+                count += 1
+        if count > 0:
+            print(f"🧹 Cleaned up {count} old poster files")
+    except Exception as e:
+        print(f"Error during cleanup: {e}")
 
 class PosterRequest(BaseModel):
     city: str
@@ -147,8 +167,12 @@ def _generate_poster_sync(job_id: str, request: PosterRequest):
         jobs[job_id]["progress"] = 30
         jobs[job_id]["message"] = "Downloading map data..."
 
-        # Generate output filename
-        output_file = cmp.generate_output_filename(request.city, request.theme)
+        # Generate output filename in temp directory
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        city_slug = request.city.lower().replace(' ', '_')
+        filename = f"{city_slug}_{request.theme}_{timestamp}.png"
+        output_file = os.path.join(TEMP_POSTERS_DIR, filename)
+
         jobs[job_id]["progress"] = 50
         jobs[job_id]["message"] = "Rendering map..."
 
@@ -158,7 +182,8 @@ def _generate_poster_sync(job_id: str, request: PosterRequest):
         jobs[job_id]["status"] = "completed"
         jobs[job_id]["progress"] = 100
         jobs[job_id]["message"] = "Poster generated successfully"
-        jobs[job_id]["file_url"] = f"/posters/{os.path.basename(output_file)}"
+        jobs[job_id]["file_path"] = output_file
+        jobs[job_id]["file_url"] = f"/api/download/{job_id}"
 
     except Exception as e:
         jobs[job_id]["status"] = "failed"
@@ -188,10 +213,70 @@ async def get_job_status(job_id: str):
         progress=job["progress"]
     )
 
+@app.get("/api/download/{job_id}")
+async def download_poster(job_id: str, download: bool = True, background_tasks: BackgroundTasks = None):
+    """Download or view the generated poster."""
+    if job_id not in jobs:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    job = jobs[job_id]
+    if job["status"] != "completed":
+        raise HTTPException(status_code=400, detail="Poster not ready yet")
+
+    file_path = job.get("file_path")
+    if not file_path or not os.path.exists(file_path):
+        raise HTTPException(status_code=404, detail="Poster file not found")
+
+    # Get filename from request data
+    request_data = job.get("request", {})
+    city_slug = request_data.get("city", "poster").lower().replace(' ', '_')
+    theme = request_data.get("theme", "default")
+    download_filename = f"{city_slug}_{theme}_poster.png"
+
+    # Schedule cleanup in background after serving
+    if background_tasks:
+        background_tasks.add_task(cleanup_old_files)
+
+    # Prepare headers based on download parameter
+    headers = {"Cache-Control": "no-cache"}
+    if download:
+        headers["Content-Disposition"] = f'attachment; filename="{download_filename}"'
+    else:
+        headers["Content-Disposition"] = f'inline; filename="{download_filename}"'
+
+    # Stream the file
+    return FileResponse(
+        path=file_path,
+        media_type="image/png",
+        filename=download_filename,
+        headers=headers
+    )
+
 @app.get("/api/health")
 async def health_check():
     """Health check endpoint."""
     return {"status": "healthy", "timestamp": datetime.now().isoformat()}
+
+@app.on_event("startup")
+async def startup_event():
+    """Run cleanup on startup and schedule periodic cleanup."""
+    print("🚀 Starting Map Poster Generator API")
+    cleanup_old_files()
+
+    # Schedule periodic cleanup every hour
+    async def periodic_cleanup():
+        while True:
+            await asyncio.sleep(3600)  # 1 hour
+            cleanup_old_files()
+
+    asyncio.create_task(periodic_cleanup())
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    """Cleanup on shutdown."""
+    print("🛑 Shutting down Map Poster Generator API")
+    # Optional: Remove temp directory on shutdown
+    # shutil.rmtree(TEMP_POSTERS_DIR, ignore_errors=True)
 
 if __name__ == "__main__":
     import uvicorn

@@ -36,6 +36,7 @@ The application consists of:
 - **Frontend**: React-based web UI (port 3000)
 - **Backend**: FastAPI server (port 8000)
 - **Docker Compose**: Orchestrates both services
+- **Storage**: Temporary file storage with automatic cleanup (2-hour retention)
 
 ### API Endpoints
 
@@ -44,7 +45,16 @@ The backend API is also available for programmatic access:
 - `GET /api/themes` - List all available themes
 - `POST /api/generate` - Generate a poster (returns job ID)
 - `GET /api/job/{job_id}` - Check generation status
-- `GET /posters/{filename}` - Download generated poster
+- `GET /api/download/{job_id}?download=true` - Download generated poster
+- `GET /api/download/{job_id}?download=false` - View poster inline
+
+### Storage Management
+
+Generated posters are stored temporarily and automatically cleaned up:
+- Files are stored in a temporary directory
+- Files older than 2 hours are automatically deleted
+- Cleanup runs every hour and on startup
+- No persistent storage needed - saves disk space!
 
 ## Examples
 
