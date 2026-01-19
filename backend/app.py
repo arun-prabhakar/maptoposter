@@ -210,7 +210,7 @@ def _generate_poster_sync(job_id: str, request: PosterRequest):
 
     try:
         jobs[job_id]["status"] = "processing"
-        jobs[job_id]["message"] = "Looking up coordinates..."
+        jobs[job_id]["message"] = "Geocoding location..."
         jobs[job_id]["progress"] = 10
 
         # Load theme
@@ -222,12 +222,13 @@ def _generate_poster_sync(job_id: str, request: PosterRequest):
 
         # Get coordinates
         coords = cmp.get_coordinates(request.city, request.country)
-        jobs[job_id]["progress"] = 20
-        jobs[job_id]["message"] = "Downloading map data..."
+        jobs[job_id]["progress"] = 15
+        jobs[job_id]["message"] = "Downloading street network..."
 
         # Fetch street network
         G = ox.graph_from_point(coords, dist=request.distance, dist_type='bbox', network_type='all')
         jobs[job_id]["progress"] = 35
+        time.sleep(0.3)
 
         # Fetch optional features based on toggles
         water = None
@@ -237,6 +238,7 @@ def _generate_poster_sync(job_id: str, request: PosterRequest):
 
         if request.show_water:
             try:
+                jobs[job_id]["message"] = "Downloading water features..."
                 water = ox.features_from_point(coords, tags={'natural': 'water', 'waterway': 'riverbank'}, dist=request.distance)
                 jobs[job_id]["progress"] = 45
             except:
@@ -245,6 +247,7 @@ def _generate_poster_sync(job_id: str, request: PosterRequest):
 
         if request.show_parks:
             try:
+                jobs[job_id]["message"] = "Downloading parks..."
                 parks = ox.features_from_point(coords, tags={'leisure': 'park', 'landuse': 'grass'}, dist=request.distance)
                 jobs[job_id]["progress"] = 50
             except:
@@ -268,7 +271,7 @@ def _generate_poster_sync(job_id: str, request: PosterRequest):
             except:
                 pass
 
-        jobs[job_id]["progress"] = 65
+        jobs[job_id]["progress"] = 80
         jobs[job_id]["message"] = "Rendering map..."
 
         # Setup plot with custom dimensions
