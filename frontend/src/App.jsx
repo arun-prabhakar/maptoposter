@@ -1,28 +1,44 @@
 import { useState, useEffect } from 'react'
 import axios from 'axios'
-import './App.css'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './components/ui/card'
+import { Input } from './components/ui/input'
+import { Label } from './components/ui/label'
+import { Slider } from './components/ui/slider'
+import { Button } from './components/ui/button'
+import { Checkbox } from './components/ui/checkbox'
+import { Separator } from './components/ui/separator'
+import { ThemeCard } from './components/ThemeCard'
+import { ProgressTracker } from './components/ProgressTracker'
+import { Map, Download, ChevronDown, ChevronUp } from 'lucide-react'
 
 // Configure axios defaults
-axios.defaults.timeout = 30000 // 30 seconds default timeout
+axios.defaults.timeout = 30000
 
 function App() {
   const [city, setCity] = useState('')
   const [country, setCountry] = useState('')
   const [theme, setTheme] = useState('feature_based')
-  const [distance, setDistance] = useState(29000)
+  const [distance, setDistance] = useState([15000])
   const [themes, setThemes] = useState([])
   const [loading, setLoading] = useState(false)
   const [jobId, setJobId] = useState(null)
   const [jobStatus, setJobStatus] = useState(null)
   const [generatedImage, setGeneratedImage] = useState(null)
-  const [selectedThemeInfo, setSelectedThemeInfo] = useState(null)
 
-  // Fetch available themes on mount
+  // Advanced options
+  const [showAdvanced, setShowAdvanced] = useState(false)
+  const [width, setWidth] = useState(12)
+  const [height, setHeight] = useState(16)
+  const [dpi, setDpi] = useState(300)
+  const [showWater, setShowWater] = useState(true)
+  const [showParks, setShowParks] = useState(true)
+  const [showBuildings, setShowBuildings] = useState(false)
+  const [showRailways, setShowRailways] = useState(false)
+
   useEffect(() => {
     fetchThemes()
   }, [])
 
-  // Poll job status when we have a job ID
   useEffect(() => {
     if (jobId && jobStatus?.status !== 'completed' && jobStatus?.status !== 'failed') {
       const interval = setInterval(() => {
@@ -32,34 +48,12 @@ function App() {
     }
   }, [jobId, jobStatus])
 
-  // Update selected theme info when theme changes
-  useEffect(() => {
-    const themeInfo = themes.find(t => t.name === theme)
-    setSelectedThemeInfo(themeInfo)
-  }, [theme, themes])
-
   const fetchThemes = async () => {
     try {
-      const response = await axios.get('/api/themes', {
-        timeout: 10000 // 10 second timeout
-      })
+      const response = await axios.get('/api/themes', { timeout: 10000 })
       setThemes(response.data)
     } catch (error) {
       console.error('Error fetching themes:', error)
-      // Set a default theme if fetch fails
-      setThemes([{
-        name: 'feature_based',
-        display_name: 'Feature-Based Shading',
-        description: 'Classic black & white with road hierarchy',
-        colors: {
-          bg: '#FFFFFF',
-          text: '#000000',
-          water: '#C0C0C0',
-          parks: '#F0F0F0',
-          road_motorway: '#0A0A0A',
-          road_primary: '#1A1A1A'
-        }
-      }])
     }
   }
 
@@ -74,29 +68,31 @@ function App() {
         city,
         country,
         theme,
-        distance: parseInt(distance)
-      }, {
-        timeout: 30000 // 30 second timeout for initial request
-      })
+        distance: distance[0],
+        width,
+        height,
+        dpi,
+        show_water: showWater,
+        show_parks: showParks,
+        show_buildings: showBuildings,
+        show_railways: showRailways
+      }, { timeout: 30000 })
       setJobId(response.data.job_id)
       setJobStatus(response.data)
     } catch (error) {
       console.error('Error generating poster:', error)
-      const errorMsg = error.response?.data?.detail || error.message || 'Error generating poster'
-      alert(errorMsg)
+      alert(error.response?.data?.detail || error.message || 'Error generating poster')
       setLoading(false)
     }
   }
 
   const checkJobStatus = async (id) => {
     try {
-      const response = await axios.get(`/api/job/${id}`, {
-        timeout: 10000 // 10 second timeout for status checks
-      })
+      const response = await axios.get(`/api/job/${id}`, { timeout: 10000 })
       setJobStatus(response.data)
 
       if (response.data.status === 'completed') {
-        setGeneratedImage(response.data.file_url)
+        setGeneratedImage(response.data.file_url + '?download=false')
         setLoading(false)
       } else if (response.data.status === 'failed') {
         alert('Poster generation failed: ' + response.data.message)
@@ -105,14 +101,14 @@ function App() {
       }
     } catch (error) {
       console.error('Error checking job status:', error)
-      // Don't alert on polling errors, just log them
     }
   }
 
   const downloadImage = () => {
     if (generatedImage) {
+      const downloadUrl = generatedImage.replace('?download=false', '?download=true')
       const link = document.createElement('a')
-      link.href = generatedImage
+      link.href = downloadUrl
       link.download = `${city.toLowerCase()}_${theme}_poster.png`
       document.body.appendChild(link)
       link.click()
@@ -120,168 +116,250 @@ function App() {
     }
   }
 
+  const distanceKm = (distance[0] / 1000).toFixed(1)
+
   return (
-    <div className="App">
-      <header className="header">
-        <h1>🗺️ Map Poster Generator</h1>
-        <p>Create beautiful, minimalist map posters for any city in the world</p>
+    <div className="min-h-screen bg-background text-foreground">
+      <header className="border-b border-border">
+        <div className="container mx-auto px-6 py-4">
+          <div className="flex items-center gap-3">
+            <Map className="w-8 h-8 text-primary" />
+            <div>
+              <h1 className="text-2xl font-bold">Map Poster Generator</h1>
+              <p className="text-sm text-muted-foreground">
+                Create beautiful, minimalist map posters for any city
+              </p>
+            </div>
+          </div>
+        </div>
       </header>
 
-      <div className="container">
-        <div className="form-section">
-          <form onSubmit={generatePoster}>
-            <div className="form-group">
-              <label htmlFor="city">City</label>
-              <input
-                type="text"
-                id="city"
-                value={city}
-                onChange={(e) => setCity(e.target.value)}
-                placeholder="e.g., New York"
-                required
-              />
-            </div>
+      <main className="container mx-auto px-6 py-8">
+        <div className="grid lg:grid-cols-2 gap-8">
+          {/* Left Panel - Build Form */}
+          <div className="space-y-6">
+            <Card>
+              <CardHeader>
+                <CardTitle>Build a Poster</CardTitle>
+                <CardDescription>
+                  All current CLI options are supported
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                <form onSubmit={generatePoster} className="space-y-6">
+                  <div className="space-y-2">
+                    <Label htmlFor="city">City</Label>
+                    <Input
+                      id="city"
+                      value={city}
+                      onChange={(e) => setCity(e.target.value)}
+                      placeholder="Venice"
+                      required
+                    />
+                  </div>
 
-            <div className="form-group">
-              <label htmlFor="country">Country</label>
-              <input
-                type="text"
-                id="country"
-                value={country}
-                onChange={(e) => setCountry(e.target.value)}
-                placeholder="e.g., USA"
-                required
-              />
-            </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="country">Country</Label>
+                    <Input
+                      id="country"
+                      value={country}
+                      onChange={(e) => setCountry(e.target.value)}
+                      placeholder="Italy"
+                      required
+                    />
+                  </div>
 
-            <div className="form-group">
-              <label htmlFor="theme">Theme</label>
-              <select
-                id="theme"
-                value={theme}
-                onChange={(e) => setTheme(e.target.value)}
-              >
-                {themes.map((t) => (
-                  <option key={t.name} value={t.name}>
-                    {t.display_name}
-                  </option>
-                ))}
-              </select>
-              {selectedThemeInfo && (
-                <p className="theme-description">{selectedThemeInfo.description}</p>
-              )}
-            </div>
+                  <div className="space-y-2">
+                    <div className="flex justify-between items-center">
+                      <Label>Radius (meters)</Label>
+                      <span className="text-sm font-medium">{distance[0]}</span>
+                    </div>
+                    <Slider
+                      value={distance}
+                      onValueChange={setDistance}
+                      min={4000}
+                      max={30000}
+                      step={1000}
+                      className="py-4"
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      4-6k for compact districts, 8-12k for downtown focus, 15-20k for big metros
+                    </p>
+                  </div>
 
-            <div className="form-group">
-              <label htmlFor="distance">
-                Map Radius: {(distance / 1000).toFixed(1)} km
-              </label>
-              <input
-                type="range"
-                id="distance"
-                min="4000"
-                max="30000"
-                step="1000"
-                value={distance}
-                onChange={(e) => setDistance(e.target.value)}
-              />
-              <div className="distance-guide">
-                <small>Small (4-6km) • Medium (8-12km) • Large (15-30km)</small>
-              </div>
-            </div>
+                  <Separator />
 
-            {selectedThemeInfo && (
-              <div className="theme-preview">
-                <h3>Theme Colors</h3>
-                <div className="color-palette">
-                  <div className="color-item">
-                    <div className="color-box" style={{ backgroundColor: selectedThemeInfo.colors.bg }}></div>
-                    <span>Background</span>
+                  <div className="space-y-3">
+                    <div className="flex justify-between items-center">
+                      <Label className="text-base">Theme</Label>
+                      <span className="text-xs text-muted-foreground">
+                        Scroll to explore palettes
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3 max-h-[400px] overflow-y-auto pr-2">
+                      {themes.map((t) => (
+                        <ThemeCard
+                          key={t.name}
+                          theme={t}
+                          selected={theme === t.name}
+                          onClick={() => setTheme(t.name)}
+                        />
+                      ))}
+                    </div>
                   </div>
-                  <div className="color-item">
-                    <div className="color-box" style={{ backgroundColor: selectedThemeInfo.colors.text }}></div>
-                    <span>Text</span>
+
+                  {/* Advanced Options */}
+                  <div>
+                    <button
+                      type="button"
+                      onClick={() => setShowAdvanced(!showAdvanced)}
+                      className="flex items-center justify-between w-full p-3 rounded-lg hover:bg-accent transition-colors"
+                    >
+                      <span className="font-medium">Advanced Options</span>
+                      {showAdvanced ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                    </button>
+
+                    {showAdvanced && (
+                      <div className="mt-4 space-y-4 p-4 border border-border rounded-lg">
+                        <div className="grid grid-cols-3 gap-3">
+                          <div className="space-y-2">
+                            <Label htmlFor="width">Width (in)</Label>
+                            <Input
+                              id="width"
+                              type="number"
+                              min="6"
+                              max="48"
+                              value={width}
+                              onChange={(e) => setWidth(e.target.value)}
+                            />
+                          </div>
+                          <div className="space-y-2">
+                            <Label htmlFor="height">Height (in)</Label>
+                            <Input
+                              id="height"
+                              type="number"
+                              min="6"
+                              max="48"
+                              value={height}
+                              onChange={(e) => setHeight(e.target.value)}
+                            />
+                          </div>
+                          <div className="space-y-2">
+                            <Label htmlFor="dpi">DPI</Label>
+                            <select
+                              id="dpi"
+                              value={dpi}
+                              onChange={(e) => setDpi(parseInt(e.target.value))}
+                              className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background"
+                            >
+                              <option value="150">150</option>
+                              <option value="300">300</option>
+                              <option value="600">600</option>
+                            </select>
+                          </div>
+                        </div>
+
+                        <div className="space-y-3">
+                          <Label>Map Features</Label>
+                          <div className="space-y-2">
+                            <div className="flex items-center space-x-2">
+                              <Checkbox
+                                id="water"
+                                checked={showWater}
+                                onCheckedChange={setShowWater}
+                              />
+                              <label htmlFor="water" className="text-sm cursor-pointer">
+                                Water Bodies
+                              </label>
+                            </div>
+                            <div className="flex items-center space-x-2">
+                              <Checkbox
+                                id="parks"
+                                checked={showParks}
+                                onCheckedChange={setShowParks}
+                              />
+                              <label htmlFor="parks" className="text-sm cursor-pointer">
+                                Parks & Green Spaces
+                              </label>
+                            </div>
+                            <div className="flex items-center space-x-2">
+                              <Checkbox
+                                id="buildings"
+                                checked={showBuildings}
+                                onCheckedChange={setShowBuildings}
+                              />
+                              <label htmlFor="buildings" className="text-sm cursor-pointer">
+                                Buildings (slower)
+                              </label>
+                            </div>
+                            <div className="flex items-center space-x-2">
+                              <Checkbox
+                                id="railways"
+                                checked={showRailways}
+                                onCheckedChange={setShowRailways}
+                              />
+                              <label htmlFor="railways" className="text-sm cursor-pointer">
+                                Railways
+                              </label>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
                   </div>
-                  <div className="color-item">
-                    <div className="color-box" style={{ backgroundColor: selectedThemeInfo.colors.water }}></div>
-                    <span>Water</span>
-                  </div>
-                  <div className="color-item">
-                    <div className="color-box" style={{ backgroundColor: selectedThemeInfo.colors.parks }}></div>
-                    <span>Parks</span>
-                  </div>
-                  <div className="color-item">
-                    <div className="color-box" style={{ backgroundColor: selectedThemeInfo.colors.road_motorway }}></div>
-                    <span>Motorway</span>
-                  </div>
-                  <div className="color-item">
-                    <div className="color-box" style={{ backgroundColor: selectedThemeInfo.colors.road_primary }}></div>
-                    <span>Primary</span>
-                  </div>
-                </div>
-              </div>
+
+                  <Button
+                    type="submit"
+                    className="w-full h-12 text-base"
+                    disabled={loading}
+                  >
+                    {loading ? 'Generating...' : 'Generate Poster'}
+                  </Button>
+                </form>
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Right Panel - Progress & Result */}
+          <div className="space-y-6">
+            <ProgressTracker jobStatus={jobStatus} />
+
+            {generatedImage && (
+              <Card>
+                <CardHeader>
+                  <CardTitle>Your Poster</CardTitle>
+                  <CardDescription>
+                    Your poster is ready to download
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <img
+                    src={generatedImage}
+                    alt="Generated poster"
+                    className="w-full rounded-lg border border-border"
+                  />
+                  <Button
+                    onClick={downloadImage}
+                    className="w-full"
+                    size="lg"
+                  >
+                    <Download className="w-4 h-4 mr-2" />
+                    Download Poster
+                  </Button>
+                </CardContent>
+              </Card>
             )}
-
-            <button type="submit" disabled={loading} className="generate-btn">
-              {loading ? 'Generating...' : 'Generate Poster'}
-            </button>
-          </form>
-
-          {jobStatus && (
-            <div className="status-section">
-              <div className="status-message">
-                <strong>Status:</strong> {jobStatus.status}
-              </div>
-              <div className="status-message">
-                {jobStatus.message}
-              </div>
-              {jobStatus.status === 'processing' && (
-                <>
-                  <div className="progress-bar">
-                    <div
-                      className="progress-fill"
-                      style={{ width: `${jobStatus.progress}%` }}
-                    ></div>
-                  </div>
-                  <div className="status-note">
-                    <small>⏱️ This may take 2-5 minutes depending on map size...</small>
-                  </div>
-                </>
-              )}
-            </div>
-          )}
+          </div>
         </div>
+      </main>
 
-        <div className="preview-section">
-          {generatedImage ? (
-            <div className="result">
-              <h2>Your Poster</h2>
-              <img
-                src={generatedImage}
-                alt="Generated map poster"
-                className="generated-image"
-              />
-              <button onClick={downloadImage} className="download-btn">
-                Download Poster
-              </button>
-            </div>
-          ) : (
-            <div className="placeholder">
-              <div className="placeholder-content">
-                <svg width="120" height="120" viewBox="0 0 120 120" fill="none">
-                  <rect x="20" y="20" width="80" height="80" rx="4" stroke="currentColor" strokeWidth="2" strokeDasharray="4 4"/>
-                  <path d="M40 60 L50 50 L60 60 L70 45 L80 55" stroke="currentColor" strokeWidth="2" fill="none"/>
-                  <circle cx="45" cy="40" r="3" fill="currentColor"/>
-                </svg>
-                <p>Your generated poster will appear here</p>
-              </div>
-            </div>
-          )}
+      <footer className="border-t border-border mt-12">
+        <div className="container mx-auto px-6 py-6">
+          <p className="text-sm text-muted-foreground text-center">
+            © OpenStreetMap contributors
+          </p>
         </div>
-      </div>
-
-      <footer className="footer">
-        <p>Powered by OpenStreetMap • Map data © OpenStreetMap contributors</p>
       </footer>
     </div>
   )
