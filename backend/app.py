@@ -279,16 +279,22 @@ def _generate_poster_sync(job_id: str, request: PosterRequest):
         ax.set_facecolor(cmp.THEME['bg'])
         ax.set_position([0, 0, 1, 1])
 
-        # Plot layers
+        # Plot layers (filter to polygon geometries only to avoid blue dots from point features)
         if water is not None and not water.empty:
-            water.plot(ax=ax, facecolor=cmp.THEME['water'], edgecolor='none', zorder=1)
+            water = water[water.geometry.type.isin(['Polygon', 'MultiPolygon'])]
+            if not water.empty:
+                water.plot(ax=ax, facecolor=cmp.THEME['water'], edgecolor='none', zorder=1)
 
         if parks is not None and not parks.empty:
-            parks.plot(ax=ax, facecolor=cmp.THEME['parks'], edgecolor='none', zorder=2)
+            parks = parks[parks.geometry.type.isin(['Polygon', 'MultiPolygon'])]
+            if not parks.empty:
+                parks.plot(ax=ax, facecolor=cmp.THEME['parks'], edgecolor='none', zorder=2)
 
         if buildings is not None and not buildings.empty:
-            building_color = cmp.THEME.get('building', '#D0D0D0')
-            buildings.plot(ax=ax, facecolor=building_color, edgecolor='none', alpha=0.5, zorder=2.5)
+            buildings = buildings[buildings.geometry.type.isin(['Polygon', 'MultiPolygon'])]
+            if not buildings.empty:
+                building_color = cmp.THEME.get('building', '#D0D0D0')
+                buildings.plot(ax=ax, facecolor=building_color, edgecolor='none', alpha=0.5, zorder=2.5)
 
         if railways is not None and not railways.empty:
             railway_color = cmp.THEME.get('railway', '#888888')
