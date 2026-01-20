@@ -34,9 +34,13 @@ function App() {
   const [showParks, setShowParks] = useState(true)
   const [showBuildings, setShowBuildings] = useState(false)
   const [showRailways, setShowRailways] = useState(false)
+  const [format, setFormat] = useState('png')
+  const [aspectRatios, setAspectRatios] = useState([])
+  const [formatOptions, setFormatOptions] = useState([])
 
   useEffect(() => {
     fetchThemes()
+    fetchPresets()
   }, [])
 
   useEffect(() => {
@@ -57,6 +61,16 @@ function App() {
     }
   }
 
+  const fetchPresets = async () => {
+    try {
+      const response = await axios.get('/api/presets', { timeout: 10000 })
+      setAspectRatios(response.data.aspect_ratios || [])
+      setFormatOptions(response.data.format_options || [])
+    } catch (error) {
+      console.error('Error fetching presets:', error)
+    }
+  }
+
   const generatePoster = async (e) => {
     e.preventDefault()
     setLoading(true)
@@ -72,6 +86,7 @@ function App() {
         width,
         height,
         dpi,
+        format,
         show_water: showWater,
         show_parks: showParks,
         show_buildings: showBuildings,
@@ -104,15 +119,44 @@ function App() {
     }
   }
 
-  const downloadImage = () => {
-    if (generatedImage) {
-      const downloadUrl = generatedImage.replace('?download=false', '?download=true')
-      const link = document.createElement('a')
-      link.href = downloadUrl
-      link.download = `${city.toLowerCase()}_${theme}_poster.png`
-      document.body.appendChild(link)
-      link.click()
-      document.body.removeChild(link)
+  const downloadImage = async () => {
+    if (!jobStatus || !jobId) return
+
+    try {
+      // When format is "both", we need to download all files
+      if (format === 'both' && jobStatus.file_paths) {
+        // Download PNG
+        const pngUrl = `/api/download/${jobId}?file_type=png`
+        const pngLink = document.createElement('a')
+        pngLink.href = pngUrl
+        pngLink.download = `${city.toLowerCase()}_${theme}_poster.png`
+        document.body.appendChild(pngLink)
+        pngLink.click()
+        document.body.removeChild(pngLink)
+
+        // Download SVG after a small delay
+        setTimeout(() => {
+          const svgUrl = `/api/download/${jobId}?file_type=svg`
+          const svgLink = document.createElement('a')
+          svgLink.href = svgUrl
+          svgLink.download = `${city.toLowerCase()}_${theme}_poster.svg`
+          document.body.appendChild(svgLink)
+          svgLink.click()
+          document.body.removeChild(svgLink)
+        }, 500)
+      } else {
+        // Single file download
+        const extension = format === 'svg' ? 'svg' : 'png'
+        const downloadUrl = `/api/download/${jobId}`
+        const link = document.createElement('a')
+        link.href = downloadUrl
+        link.download = `${city.toLowerCase()}_${theme}_poster.${extension}`
+        document.body.appendChild(link)
+        link.click()
+        document.body.removeChild(link)
+      }
+    } catch (error) {
+      console.error('Error downloading image:', error)
     }
   }
 
@@ -222,6 +266,31 @@ function App() {
 
                     {showAdvanced && (
                       <div className="mt-4 space-y-4 p-4 border border-border rounded-lg">
+                        {/* Aspect Ratio Presets */}
+                        {aspectRatios.length > 0 && (
+                          <div className="space-y-2">
+                            <Label>Aspect Ratio Presets</Label>
+                            <div className="grid grid-cols-2 gap-2">
+                              {aspectRatios.map((ratio) => (
+                                <Button
+                                  key={ratio.name}
+                                  type="button"
+                                  variant={width === ratio.width && height === ratio.height ? "default" : "outline"}
+                                  size="sm"
+                                  onClick={() => {
+                                    setWidth(ratio.width)
+                                    setHeight(ratio.height)
+                                  }}
+                                  className="justify-start text-xs h-auto py-2"
+                                >
+                                  <span className="mr-2">{ratio.icon}</span>
+                                  <span className="flex-1 text-left">{ratio.name}</span>
+                                </Button>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
                         <div className="grid grid-cols-3 gap-3">
                           <div className="space-y-2">
                             <Label htmlFor="width">Width (in)</Label>
@@ -259,6 +328,35 @@ function App() {
                             </select>
                           </div>
                         </div>
+
+                        {/* Format Selection */}
+                        {formatOptions.length > 0 && (
+                          <div className="space-y-2">
+                            <Label>Output Format</Label>
+                            <div className="space-y-2">
+                              {formatOptions.map((option) => (
+                                <div
+                                  key={option.value}
+                                  className="flex items-start space-x-2 p-2 rounded-md hover:bg-accent cursor-pointer"
+                                  onClick={() => setFormat(option.value)}
+                                >
+                                  <input
+                                    type="radio"
+                                    name="format"
+                                    value={option.value}
+                                    checked={format === option.value}
+                                    onChange={(e) => setFormat(e.target.value)}
+                                    className="mt-1"
+                                  />
+                                  <div className="flex-1">
+                                    <div className="font-medium text-sm">{option.name}</div>
+                                    <div className="text-xs text-muted-foreground">{option.description}</div>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
 
                         <div className="space-y-3">
                           <Label>Map Features</Label>
