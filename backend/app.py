@@ -73,6 +73,7 @@ class PosterRequest(BaseModel):
     width: int = 12
     height: int = 16
     dpi: int = 300
+    format: str = "png"  # png, svg, or both
 
     # Feature toggles
     show_water: bool = True
@@ -139,12 +140,27 @@ async def get_themes():
 async def get_presets():
     """Get preset configurations for common use cases."""
     return {
+        "aspect_ratios": [
+            {"name": "Portrait (3:4)", "width": 12, "height": 16, "icon": "📱"},
+            {"name": "Square (1:1)", "width": 12, "height": 12, "icon": "⬜"},
+            {"name": "Landscape (4:3)", "width": 16, "height": 12, "icon": "🖼️"},
+            {"name": "Instagram Post (1:1)", "width": 12, "height": 12, "icon": "📸"},
+            {"name": "Instagram Story (9:16)", "width": 9, "height": 16, "icon": "📲"},
+            {"name": "Desktop Wallpaper (16:9)", "width": 16, "height": 9, "icon": "🖥️"},
+            {"name": "Phone Wallpaper (9:16)", "width": 9, "height": 16, "icon": "📱"},
+            {"name": "Large Portrait (3:4)", "width": 18, "height": 24, "icon": "🖼️"},
+        ],
         "output_sizes": [
             {"name": "Standard Poster (12x16)", "width": 12, "height": 16},
             {"name": "Square (12x12)", "width": 12, "height": 12},
             {"name": "Landscape (16x12)", "width": 16, "height": 12},
             {"name": "Large Portrait (18x24)", "width": 18, "height": 24},
             {"name": "Extra Large (24x32)", "width": 24, "height": 32},
+        ],
+        "format_options": [
+            {"value": "png", "name": "PNG", "description": "Raster image, best for web/digital"},
+            {"value": "svg", "name": "SVG", "description": "Vector image, scalable to any size"},
+            {"value": "both", "name": "Both", "description": "PNG + SVG (two files)"},
         ],
         "dpi_options": [
             {"name": "Preview (150 DPI)", "value": 150, "description": "Fast, good for previews"},
@@ -181,6 +197,10 @@ async def generate_poster(request: PosterRequest, background_tasks: BackgroundTa
     # Validate DPI
     if request.dpi not in [150, 300, 600]:
         raise HTTPException(status_code=400, detail="DPI must be 150, 300, or 600")
+
+    # Validate format
+    if request.format not in ["png", "svg", "both"]:
+        raise HTTPException(status_code=400, detail="Format must be 'png', 'svg', or 'both'")
 
     # Create job
     job_id = str(uuid.uuid4())
@@ -338,20 +358,31 @@ def _generate_poster_sync(job_id: str, request: PosterRequest):
         jobs[job_id]["progress"] = 90
         jobs[job_id]["message"] = "Saving poster..."
 
-        # Generate output filename
+        # Generate output filename(s)
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         city_slug = request.city.lower().replace(' ', '_')
-        filename = f"{city_slug}_{request.theme}_{timestamp}.png"
-        output_file = os.path.join(TEMP_POSTERS_DIR, filename)
+        base_filename = f"{city_slug}_{request.theme}_{timestamp}"
 
-        # Save with custom DPI
-        plt.savefig(output_file, dpi=request.dpi, facecolor=cmp.THEME['bg'])
+        output_files = []
+
+        # Save based on format request
+        if request.format in ["png", "both"]:
+            png_file = os.path.join(TEMP_POSTERS_DIR, f"{base_filename}.png")
+            plt.savefig(png_file, dpi=request.dpi, facecolor=cmp.THEME['bg'], format='png')
+            output_files.append(png_file)
+
+        if request.format in ["svg", "both"]:
+            svg_file = os.path.join(TEMP_POSTERS_DIR, f"{base_filename}.svg")
+            plt.savefig(svg_file, facecolor=cmp.THEME['bg'], format='svg')
+            output_files.append(svg_file)
+
         plt.close()
 
         jobs[job_id]["status"] = "completed"
         jobs[job_id]["progress"] = 100
         jobs[job_id]["message"] = "Poster generated successfully"
-        jobs[job_id]["file_path"] = output_file
+        jobs[job_id]["file_path"] = output_files[0]  # Primary file
+        jobs[job_id]["file_paths"] = output_files  # All files
         jobs[job_id]["file_url"] = f"/api/download/{job_id}"
 
     except Exception as e:
@@ -383,8 +414,13 @@ async def get_job_status(job_id: str):
     )
 
 @app.get("/api/download/{job_id}")
-async def download_poster(job_id: str, download: bool = True, background_tasks: BackgroundTasks = None):
-    """Download or view the generated poster."""
+async def download_poster(
+    job_id: str,
+    download: bool = True,
+    file_type: str = None,
+    background_tasks: BackgroundTasks = None
+):
+    """Download or view the generated poster. Supports multiple formats when format='both'."""
     if job_id not in jobs:
         raise HTTPException(status_code=404, detail="Job not found")
 
@@ -392,15 +428,34 @@ async def download_poster(job_id: str, download: bool = True, background_tasks: 
     if job["status"] != "completed":
         raise HTTPException(status_code=400, detail="Poster not ready yet")
 
-    file_path = job.get("file_path")
-    if not file_path or not os.path.exists(file_path):
-        raise HTTPException(status_code=404, detail="Poster file not found")
-
-    # Get filename from request data
+    # Get request data for filename
     request_data = job.get("request", {})
     city_slug = request_data.get("city", "poster").lower().replace(' ', '_')
     theme = request_data.get("theme", "default")
-    download_filename = f"{city_slug}_{theme}_poster.png"
+
+    # Determine which file to serve
+    file_paths = job.get("file_paths", [])
+    file_path = None
+    extension = "png"
+    media_type = "image/png"
+
+    if file_type:
+        # Find the specific file type requested
+        for fp in file_paths:
+            if fp.endswith(f".{file_type}"):
+                file_path = fp
+                extension = file_type
+                media_type = "image/svg+xml" if file_type == "svg" else "image/png"
+                break
+
+    if not file_path:
+        # Default to the primary file
+        file_path = job.get("file_path")
+
+    if not file_path or not os.path.exists(file_path):
+        raise HTTPException(status_code=404, detail="Poster file not found")
+
+    download_filename = f"{city_slug}_{theme}_poster.{extension}"
 
     # Schedule cleanup in background after serving
     if background_tasks:
@@ -416,7 +471,7 @@ async def download_poster(job_id: str, download: bool = True, background_tasks: 
     # Stream the file
     return FileResponse(
         path=file_path,
-        media_type="image/png",
+        media_type=media_type,
         filename=download_filename,
         headers=headers
     )
