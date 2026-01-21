@@ -7,9 +7,11 @@ import { Slider } from './components/ui/slider'
 import { Button } from './components/ui/button'
 import { Checkbox } from './components/ui/checkbox'
 import { Separator } from './components/ui/separator'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "./components/ui/tabs"
+import { ScrollArea } from "./components/ui/scroll-area"
 import { ThemeCard } from './components/ThemeCard'
 import { ProgressTracker } from './components/ProgressTracker'
-import { Map, Download, ChevronDown, ChevronUp } from 'lucide-react'
+import { Map, Download, Settings2, Sparkles, Image as ImageIcon, Loader2 } from 'lucide-react'
 
 // Configure axios defaults
 axios.defaults.timeout = 30000
@@ -26,7 +28,6 @@ function App() {
   const [generatedImage, setGeneratedImage] = useState(null)
 
   // Advanced options
-  const [showAdvanced, setShowAdvanced] = useState(false)
   const [width, setWidth] = useState(12)
   const [height, setHeight] = useState(16)
   const [dpi, setDpi] = useState(300)
@@ -34,6 +35,7 @@ function App() {
   const [showParks, setShowParks] = useState(true)
   const [showBuildings, setShowBuildings] = useState(false)
   const [showRailways, setShowRailways] = useState(false)
+  const [showAttribution, setShowAttribution] = useState(true)
   const [format, setFormat] = useState('png')
   const [aspectRatios, setAspectRatios] = useState([])
   const [formatOptions, setFormatOptions] = useState([])
@@ -72,7 +74,7 @@ function App() {
   }
 
   const generatePoster = async (e) => {
-    e.preventDefault()
+    if (e) e.preventDefault()
     setLoading(true)
     setJobStatus(null)
     setGeneratedImage(null)
@@ -90,7 +92,8 @@ function App() {
         show_water: showWater,
         show_parks: showParks,
         show_buildings: showBuildings,
-        show_railways: showRailways
+        show_railways: showRailways,
+        show_attribution: showAttribution
       }, { timeout: 30000 })
       setJobId(response.data.job_id)
       setJobStatus(response.data)
@@ -123,9 +126,7 @@ function App() {
     if (!jobStatus || !jobId) return
 
     try {
-      // When format is "both", we need to download all files
       if (format === 'both' && jobStatus.file_paths) {
-        // Download PNG
         const pngUrl = `/api/download/${jobId}?file_type=png`
         const pngLink = document.createElement('a')
         pngLink.href = pngUrl
@@ -134,7 +135,6 @@ function App() {
         pngLink.click()
         document.body.removeChild(pngLink)
 
-        // Download SVG after a small delay
         setTimeout(() => {
           const svgUrl = `/api/download/${jobId}?file_type=svg`
           const svgLink = document.createElement('a')
@@ -145,7 +145,6 @@ function App() {
           document.body.removeChild(svgLink)
         }, 500)
       } else {
-        // Single file download
         const extension = format === 'svg' ? 'svg' : 'png'
         const downloadUrl = `/api/download/${jobId}`
         const link = document.createElement('a')
@@ -160,63 +159,68 @@ function App() {
     }
   }
 
-  const distanceKm = (distance[0] / 1000).toFixed(1)
-
   return (
-    <div className="min-h-screen bg-background text-foreground">
-      <header className="border-b border-border">
-        <div className="container mx-auto px-6 py-4">
+    <div className="flex h-screen w-screen overflow-hidden bg-background text-foreground">
+      {/* Sidebar - Controls */}
+      <aside className="w-96 flex flex-col border-r border-border bg-card overflow-hidden shrink-0 shadow-xl z-10">
+        <header className="p-6 border-b border-border bg-muted/30">
           <div className="flex items-center gap-3">
-            <Map className="w-8 h-8 text-primary" />
+            <div className="p-2 bg-primary rounded-lg">
+              <Map className="w-6 h-6 text-primary-foreground" />
+            </div>
             <div>
-              <h1 className="text-2xl font-bold">Map Poster Generator</h1>
-              <p className="text-sm text-muted-foreground">
-                Create beautiful, minimalist map posters for any city
-              </p>
+              <h1 className="text-xl font-bold tracking-tight">Map Poster</h1>
+              <p className="text-xs text-muted-foreground">Minimalist City Art</p>
             </div>
           </div>
-        </div>
-      </header>
+        </header>
 
-      <main className="container mx-auto px-6 py-8">
-        <div className="grid lg:grid-cols-2 gap-8">
-          {/* Left Panel - Build Form */}
-          <div className="space-y-6">
-            <Card>
-              <CardHeader>
-                <CardTitle>Build a Poster</CardTitle>
-                <CardDescription>
-                  All current CLI options are supported
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-6">
-                <form onSubmit={generatePoster} className="space-y-6">
+        <Tabs defaultValue="essential" className="flex-1 flex flex-col overflow-hidden">
+          <div className="px-6 py-4 bg-muted/10 border-b border-border">
+            <TabsList className="grid w-full grid-cols-2 p-1 bg-muted">
+              <TabsTrigger value="essential" className="flex items-center gap-2">
+                <Sparkles className="w-4 h-4" />
+                Essential
+              </TabsTrigger>
+              <TabsTrigger value="advanced" className="flex items-center gap-2">
+                <Settings2 className="w-4 h-4" />
+                Advanced
+              </TabsTrigger>
+            </TabsList>
+          </div>
+
+          <ScrollArea className="flex-1">
+            <div className="px-6 py-6 space-y-8">
+              <TabsContent value="essential" className="mt-0 space-y-8 pb-4">
+                <div className="space-y-4">
                   <div className="space-y-2">
-                    <Label htmlFor="city">City</Label>
+                    <Label htmlFor="city" className="text-sm font-semibold">City</Label>
                     <Input
                       id="city"
                       value={city}
                       onChange={(e) => setCity(e.target.value)}
-                      placeholder="Venice"
-                      required
+                      placeholder="e.g. Venice"
+                      className="bg-muted/50 border-none h-11 focus-visible:ring-1 focus-visible:ring-primary"
                     />
                   </div>
 
                   <div className="space-y-2">
-                    <Label htmlFor="country">Country</Label>
+                    <Label htmlFor="country" className="text-sm font-semibold">Country</Label>
                     <Input
                       id="country"
                       value={country}
                       onChange={(e) => setCountry(e.target.value)}
-                      placeholder="Italy"
-                      required
+                      placeholder="e.g. Italy"
+                      className="bg-muted/50 border-none h-11 focus-visible:ring-1 focus-visible:ring-primary"
                     />
                   </div>
 
-                  <div className="space-y-2">
+                  <div className="space-y-4 pt-2">
                     <div className="flex justify-between items-center">
-                      <Label>Radius (meters)</Label>
-                      <span className="text-sm font-medium">{distance[0]}</span>
+                      <Label className="text-sm font-semibold">Radius</Label>
+                      <span className="text-xs font-mono bg-muted px-2 py-0.5 rounded text-muted-foreground">
+                        {distance[0]}m
+                      </span>
                     </div>
                     <Slider
                       value={distance}
@@ -224,241 +228,251 @@ function App() {
                       min={4000}
                       max={30000}
                       step={1000}
-                      className="py-4"
+                      className="py-2"
                     />
-                    <p className="text-xs text-muted-foreground">
-                      4-6k for compact districts, 8-12k for downtown focus, 15-20k for big metros
+                    <p className="text-[10px] text-muted-foreground uppercase tracking-widest leading-relaxed">
+                      4km (district) - 15km (downtown) - 30km (metro)
                     </p>
                   </div>
+                </div>
 
-                  <Separator />
+                <div className="space-y-4 border-t border-border pt-6">
+                  <div className="flex justify-between items-end">
+                    <Label className="text-sm font-semibold">Theme</Label>
+                    <span className="text-[10px] text-muted-foreground uppercase">{themes.length} Options</span>
+                  </div>
+                  <div className="grid grid-cols-1 gap-4">
+                    {themes.map((t) => (
+                      <ThemeCard
+                        key={t.name}
+                        theme={t}
+                        selected={theme === t.name}
+                        onClick={() => setTheme(t.name)}
+                      />
+                    ))}
+                  </div>
+                </div>
+              </TabsContent>
 
-                  <div className="space-y-3">
-                    <div className="flex justify-between items-center">
-                      <Label className="text-base">Theme</Label>
-                      <span className="text-xs text-muted-foreground">
-                        Scroll to explore palettes
-                      </span>
+              <TabsContent value="advanced" className="mt-0 space-y-8 pb-4">
+                {/* Print Settings */}
+                <div className="space-y-6">
+                  <Label className="text-xs font-bold uppercase tracking-widest text-muted-foreground">Print Settings</Label>
+
+                  {aspectRatios.length > 0 && (
+                    <div className="space-y-3">
+                      <Label className="text-sm font-semibold">Predefined Sizes</Label>
+                      <div className="grid grid-cols-2 gap-2">
+                        {aspectRatios.map((ratio) => (
+                          <Button
+                            key={ratio.name}
+                            type="button"
+                            variant={width === ratio.width && height === ratio.height ? "default" : "outline"}
+                            size="sm"
+                            onClick={() => {
+                              setWidth(ratio.width)
+                              setHeight(ratio.height)
+                            }}
+                            className="justify-start text-[11px] h-9 px-3"
+                          >
+                            <span className="mr-2 opacity-70">{ratio.icon}</span>
+                            <span className="truncate">{ratio.name}</span>
+                          </Button>
+                        ))}
+                      </div>
                     </div>
+                  )}
 
-                    <div className="grid grid-cols-2 gap-3 max-h-[400px] overflow-y-auto pr-2">
-                      {themes.map((t) => (
-                        <ThemeCard
-                          key={t.name}
-                          theme={t}
-                          selected={theme === t.name}
-                          onClick={() => setTheme(t.name)}
-                        />
-                      ))}
+                  <div className="grid grid-cols-3 gap-3">
+                    <div className="space-y-2">
+                      <Label htmlFor="width" className="text-[11px]">Width (in)</Label>
+                      <Input
+                        id="width"
+                        type="number"
+                        value={width}
+                        onChange={(e) => setWidth(e.target.value)}
+                        className="bg-muted/50 border-none h-10"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="height" className="text-[11px]">Height (in)</Label>
+                      <Input
+                        id="height"
+                        type="number"
+                        value={height}
+                        onChange={(e) => setHeight(e.target.value)}
+                        className="bg-muted/50 border-none h-10"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="dpi" className="text-[11px]">DPI</Label>
+                      <select
+                        id="dpi"
+                        value={dpi}
+                        onChange={(e) => setDpi(parseInt(e.target.value))}
+                        className="flex h-10 w-full rounded-md border-none bg-muted/50 px-3 py-2 text-sm"
+                      >
+                        <option value="150">150</option>
+                        <option value="300">300</option>
+                        <option value="600">600</option>
+                      </select>
                     </div>
                   </div>
+                </div>
 
-                  {/* Advanced Options */}
-                  <div>
-                    <button
-                      type="button"
-                      onClick={() => setShowAdvanced(!showAdvanced)}
-                      className="flex items-center justify-between w-full p-3 rounded-lg hover:bg-accent transition-colors"
-                    >
-                      <span className="font-medium">Advanced Options</span>
-                      {showAdvanced ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-                    </button>
-
-                    {showAdvanced && (
-                      <div className="mt-4 space-y-4 p-4 border border-border rounded-lg">
-                        {/* Aspect Ratio Presets */}
-                        {aspectRatios.length > 0 && (
-                          <div className="space-y-2">
-                            <Label>Aspect Ratio Presets</Label>
-                            <div className="grid grid-cols-2 gap-2">
-                              {aspectRatios.map((ratio) => (
-                                <Button
-                                  key={ratio.name}
-                                  type="button"
-                                  variant={width === ratio.width && height === ratio.height ? "default" : "outline"}
-                                  size="sm"
-                                  onClick={() => {
-                                    setWidth(ratio.width)
-                                    setHeight(ratio.height)
-                                  }}
-                                  className="justify-start text-xs h-auto py-2"
-                                >
-                                  <span className="mr-2">{ratio.icon}</span>
-                                  <span className="flex-1 text-left">{ratio.name}</span>
-                                </Button>
-                              ))}
-                            </div>
-                          </div>
-                        )}
-
-                        <div className="grid grid-cols-3 gap-3">
-                          <div className="space-y-2">
-                            <Label htmlFor="width">Width (in)</Label>
-                            <Input
-                              id="width"
-                              type="number"
-                              min="6"
-                              max="48"
-                              value={width}
-                              onChange={(e) => setWidth(e.target.value)}
-                            />
-                          </div>
-                          <div className="space-y-2">
-                            <Label htmlFor="height">Height (in)</Label>
-                            <Input
-                              id="height"
-                              type="number"
-                              min="6"
-                              max="48"
-                              value={height}
-                              onChange={(e) => setHeight(e.target.value)}
-                            />
-                          </div>
-                          <div className="space-y-2">
-                            <Label htmlFor="dpi">DPI</Label>
-                            <select
-                              id="dpi"
-                              value={dpi}
-                              onChange={(e) => setDpi(parseInt(e.target.value))}
-                              className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background"
-                            >
-                              <option value="150">150</option>
-                              <option value="300">300</option>
-                              <option value="600">600</option>
-                            </select>
-                          </div>
+                {/* Output Settings */}
+                <div className="space-y-6 border-t border-border pt-6">
+                  <Label className="text-xs font-bold uppercase tracking-widest text-muted-foreground">Output Format</Label>
+                  <div className="grid gap-2">
+                    {formatOptions.map((option) => (
+                      <div
+                        key={option.value}
+                        className={`flex items-start space-x-3 p-3 rounded-lg border transition-all cursor-pointer ${format === option.value
+                          ? "border-primary bg-primary/5 ring-1 ring-primary/20"
+                          : "border-border bg-muted/30 hover:bg-muted/50"
+                          }`}
+                        onClick={() => setFormat(option.value)}
+                      >
+                        <div className={`mt-1 h-4 w-4 rounded-full border flex items-center justify-center ${format === option.value ? "border-primary" : "border-muted-foreground"}`}>
+                          {format === option.value && <div className="h-2 w-2 rounded-full bg-primary" />}
                         </div>
-
-                        {/* Format Selection */}
-                        {formatOptions.length > 0 && (
-                          <div className="space-y-2">
-                            <Label>Output Format</Label>
-                            <div className="space-y-2">
-                              {formatOptions.map((option) => (
-                                <div
-                                  key={option.value}
-                                  className="flex items-start space-x-2 p-2 rounded-md hover:bg-accent cursor-pointer"
-                                  onClick={() => setFormat(option.value)}
-                                >
-                                  <input
-                                    type="radio"
-                                    name="format"
-                                    value={option.value}
-                                    checked={format === option.value}
-                                    onChange={(e) => setFormat(e.target.value)}
-                                    className="mt-1"
-                                  />
-                                  <div className="flex-1">
-                                    <div className="font-medium text-sm">{option.name}</div>
-                                    <div className="text-xs text-muted-foreground">{option.description}</div>
-                                  </div>
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        )}
-
-                        <div className="space-y-3">
-                          <Label>Map Features</Label>
-                          <div className="space-y-2">
-                            <div className="flex items-center space-x-2">
-                              <Checkbox
-                                id="water"
-                                checked={showWater}
-                                onCheckedChange={setShowWater}
-                              />
-                              <label htmlFor="water" className="text-sm cursor-pointer">
-                                Water Bodies
-                              </label>
-                            </div>
-                            <div className="flex items-center space-x-2">
-                              <Checkbox
-                                id="parks"
-                                checked={showParks}
-                                onCheckedChange={setShowParks}
-                              />
-                              <label htmlFor="parks" className="text-sm cursor-pointer">
-                                Parks & Green Spaces
-                              </label>
-                            </div>
-                            <div className="flex items-center space-x-2">
-                              <Checkbox
-                                id="buildings"
-                                checked={showBuildings}
-                                onCheckedChange={setShowBuildings}
-                              />
-                              <label htmlFor="buildings" className="text-sm cursor-pointer">
-                                Buildings (slower)
-                              </label>
-                            </div>
-                            <div className="flex items-center space-x-2">
-                              <Checkbox
-                                id="railways"
-                                checked={showRailways}
-                                onCheckedChange={setShowRailways}
-                              />
-                              <label htmlFor="railways" className="text-sm cursor-pointer">
-                                Railways
-                              </label>
-                            </div>
-                          </div>
+                        <div>
+                          <p className="text-xs font-bold">{option.name}</p>
+                          <p className="text-[10px] text-muted-foreground mt-0.5">{option.description}</p>
                         </div>
                       </div>
-                    )}
+                    ))}
+                  </div>
+                </div>
+
+                {/* Map Features */}
+                <div className="space-y-6 border-t border-border pt-6">
+                  <Label className="text-xs font-bold uppercase tracking-widest text-muted-foreground">Map Features</Label>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="flex items-center space-x-2">
+                      <Checkbox id="water" checked={showWater} onCheckedChange={setShowWater} />
+                      <label htmlFor="water" className="text-xs font-medium cursor-pointer">Water</label>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <Checkbox id="parks" checked={showParks} onCheckedChange={setShowParks} />
+                      <label htmlFor="parks" className="text-xs font-medium cursor-pointer">Parks</label>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <Checkbox id="buildings" checked={showBuildings} onCheckedChange={setShowBuildings} />
+                      <label htmlFor="buildings" className="text-xs font-medium cursor-pointer">Buildings</label>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <Checkbox id="railways" checked={showRailways} onCheckedChange={setShowRailways} />
+                      <label htmlFor="railways" className="text-xs font-medium cursor-pointer">Railways</label>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Attribution */}
+                <div className="space-y-4 border-t border-border pt-6">
+                  <Label className="text-xs font-bold uppercase tracking-widest text-muted-foreground">Attribution</Label>
+                  <div className="flex items-center space-x-2">
+                    <Checkbox id="attribution" checked={showAttribution} onCheckedChange={setShowAttribution} />
+                    <label htmlFor="attribution" className="text-xs font-medium cursor-pointer">Show "powered by arun.im"</label>
+                  </div>
+                </div>
+              </TabsContent>
+            </div>
+          </ScrollArea>
+
+          <footer className="p-6 border-t border-border bg-card">
+            <Button
+              className="w-full h-12 text-sm font-bold shadow-lg shadow-primary/20 transition-all hover:scale-[1.02] active:scale-[0.98]"
+              disabled={loading || !city || !country}
+              onClick={generatePoster}
+            >
+              {loading ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Generating Poster...
+                </>
+              ) : (
+                <>
+                  <Sparkles className="mr-2 h-4 w-4" />
+                  Generate Poster
+                </>
+              )}
+            </Button>
+          </footer>
+        </Tabs>
+      </aside>
+
+      {/* Main Content - Preview */}
+      <main className="flex-1 relative flex flex-col items-center justify-center p-12 bg-muted/20 overflow-hidden">
+        {/* Background Pattern */}
+        <div className="absolute inset-0 opacity-[0.03] pointer-events-none" style={{ backgroundImage: 'radial-gradient(circle at 2px 2px, currentColor 1px, transparent 0)', backgroundSize: '24px 24px' }} />
+
+        {!jobStatus && !generatedImage && (
+          <div className="text-center space-y-6 max-w-md animate-in fade-in zoom-in duration-500">
+            <div className="mx-auto w-24 h-24 rounded-full bg-muted flex items-center justify-center shadow-inner">
+              <Map className="w-12 h-12 text-muted-foreground/30" />
+            </div>
+            <div>
+              <h2 className="text-2xl font-bold tracking-tight">Ready to map?</h2>
+              <p className="text-sm text-muted-foreground mt-2 leading-relaxed">
+                Enter a city and country in the sidebar to create your custom minimalist map poster.
+              </p>
+            </div>
+          </div>
+        )}
+
+        {jobStatus && (
+          <div className="w-full h-full flex items-center justify-center">
+            <div className="w-full max-w-2xl animate-in slide-in-from-bottom-8 duration-700">
+              {!generatedImage ? (
+                <Card className="border-none shadow-2xl bg-card/80 backdrop-blur-sm">
+                  <CardHeader className="text-center pb-2">
+                    <CardTitle className="text-2xl">Building Your Art...</CardTitle>
+                    <CardDescription>We're fetching data and rendering your custom map.</CardDescription>
+                  </CardHeader>
+                  <CardContent className="p-8">
+                    <ProgressTracker jobStatus={jobStatus} />
+                  </CardContent>
+                </Card>
+              ) : (
+                <div className="space-y-8 animate-in zoom-in duration-1000">
+                  <div className="relative group mx-auto max-h-[70vh] flex justify-center">
+                    <img
+                      src={generatedImage}
+                      alt="Generated poster"
+                      className="rounded-lg shadow-2xl border-8 border-white object-contain"
+                      style={{ height: '70vh' }}
+                    />
+                    <div className="absolute inset-0 rounded-lg ring-1 ring-inset ring-black/10 pointer-events-none" />
                   </div>
 
-                  <Button
-                    type="submit"
-                    className="w-full h-12 text-base"
-                    disabled={loading}
-                  >
-                    {loading ? 'Generating...' : 'Generate Poster'}
-                  </Button>
-                </form>
-              </CardContent>
-            </Card>
+                  <div className="flex justify-center gap-4">
+                    <Button
+                      onClick={downloadImage}
+                      className="h-12 px-8 font-bold shadow-lg"
+                      size="lg"
+                    >
+                      <Download className="w-4 h-4 mr-2" />
+                      Download High-Res
+                    </Button>
+                    <Button
+                      variant="outline"
+                      onClick={() => {
+                        setGeneratedImage(null);
+                        setJobStatus(null);
+                      }}
+                      className="h-12 px-8 font-bold"
+                      size="lg"
+                    >
+                      Create New
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
-
-          {/* Right Panel - Progress & Result */}
-          <div className="space-y-6">
-            <ProgressTracker jobStatus={jobStatus} />
-
-            {generatedImage && (
-              <Card>
-                <CardHeader>
-                  <CardTitle>Your Poster</CardTitle>
-                  <CardDescription>
-                    Your poster is ready to download
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <img
-                    src={generatedImage}
-                    alt="Generated poster"
-                    className="w-full rounded-lg border border-border"
-                  />
-                  <Button
-                    onClick={downloadImage}
-                    className="w-full"
-                    size="lg"
-                  >
-                    <Download className="w-4 h-4 mr-2" />
-                    Download Poster
-                  </Button>
-                </CardContent>
-              </Card>
-            )}
-          </div>
-        </div>
+        )}
       </main>
-
-      <footer className="border-t border-border mt-12">
-        <div className="container mx-auto px-6 py-6">
-          <p className="text-sm text-muted-foreground text-center">
-            © OpenStreetMap contributors
-          </p>
-        </div>
-      </footer>
     </div>
   )
 }

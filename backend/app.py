@@ -80,6 +80,7 @@ class PosterRequest(BaseModel):
     show_parks: bool = True
     show_buildings: bool = False
     show_railways: bool = False
+    show_attribution: bool = True
 
     # Custom colors (optional overrides)
     custom_colors: Optional[Dict[str, str]] = None
@@ -353,7 +354,9 @@ def _generate_poster_sync(job_id: str, request: PosterRequest):
             coords_text = coords_text.replace("E", "W")
         ax.text(0.5, 0.07, coords_text, transform=ax.transAxes, color=cmp.THEME['text'], alpha=0.7, ha='center', fontproperties=font_coords, zorder=11)
         ax.plot([0.4, 0.6], [0.125, 0.125], transform=ax.transAxes, color=cmp.THEME['text'], linewidth=1, zorder=11)
-        ax.text(0.98, 0.02, "© OpenStreetMap contributors", transform=ax.transAxes, color=cmp.THEME['text'], alpha=0.5, ha='right', va='bottom', fontproperties=font_attr, zorder=11)
+        
+        if request.show_attribution:
+            ax.text(0.98, 0.02, "powered by arun.im", transform=ax.transAxes, color=cmp.THEME['text'], alpha=0.4, ha='right', va='bottom', fontproperties=font_attr, zorder=11)
 
         jobs[job_id]["progress"] = 90
         jobs[job_id]["message"] = "Saving poster..."
